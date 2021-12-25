@@ -52,8 +52,11 @@ class ECC():
         p = self.p
         a = self.a
         if pt1.x != pt2.x:
-            # Don't worry, the result of the division must be an integer. 
-            # ref: https://crypto.stackexchange.com/questions/48657/how-does-ecc-go-from-decimals-to-integers
+            # (x / y) % p = (x * (y**(-1) % p)) % p where  y**(-1) % p is called Modular multiplicative inverse. 
+            # Likely in python3, we can use pow(y, -1, p) to get "y**(-1) % p"
+            # ref: 
+            #   1. https://stackoverflow.com/questions/12235110/modulo-of-division-of-two-numbers
+            #   2. https://stackoverflow.com/questions/4798654/modular-multiplicative-inverse-function-in-python
             l = ((pt2.y - pt1.y) * pow(pt2.x - pt1.x, -1, p)) % p
             assert type(l) == int, "{} must be an int".format(l)
 
