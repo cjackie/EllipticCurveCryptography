@@ -6,7 +6,10 @@ import random
 
 
 # Section 2.3.6 in https://www.secg.org/sec1-v2.pdf
-def _convert(m: bytes) -> int:
+def _be(m: bytes) -> int:
+    '''
+    Intepret the bytes as a big endian number.
+    '''
     x = 0
     mlen = len(m)
     for i in range(mlen):
@@ -26,9 +29,9 @@ class ECC():
         self.p = Params.p
         self.a = Params.a
         self.b = Params.b
-        self.G_x = _convert(Params.G[1:33])
-        self.G_y = _convert(Params.G[33:])
-        self.n = _convert(Params.n)
+        self.G_x = _be(Params.G[1:33])
+        self.G_y = _be(Params.G[33:])
+        self.n = _be(Params.n)
         self.h = Params.h
 
         s = random.randint(1, self.n)
@@ -76,10 +79,30 @@ class ECC():
         raise Exception("Not rules for addition of two EC points ({}, {}) and ({}, {})".format(pt1.x, pt1.y, pt2.x, pt2.y))
 
     def _mult(self, n, pt):
-        assert n > 0
-        r = copy(pt)
-        for _ in range(1, n):
-            r = self._add(r, pt)
+        '''
+        Efficiently multiply n*pt. The time complexity is O(log(n))
+        This may be called Double-and-add (https://en.wikipedia.org/wiki/Elliptic_curve_point_multiplication)
+        '''
+        # Assume n is 32 bytes big endian number.
+        assert n < 2**256 and n > 0
+
+        # Pre-compute the table for 2*n*pt 
+        table = [ECPoint(None, None, inf=True)]*256
+        table[1] = pt
+        for i in range(2, 256):
+            table[i] = self._add(table[i-1], table[i-1])
+
+        # n * pt = (I_0*2^0 + I_1*2^1 + I_2*2^2 ... I_256*2^256) * pt, where I_k is 1 or 0.
+        # So we can adding I_k*2^k * pt together for I_k = 1, and I_k*2^k * pt can be looked up with 
+        # `table`
+        k = 0
+        r = ECPoint(None, None, inf=True)
+        while n > 0:
+            if n % 2 == 1:
+                r = self._add(r, table[k])
+            k += 1
+            n //= 2
+
         return r
     
     def privkey(self) -> bytes:
@@ -88,7 +111,7 @@ class ECC():
     def pubkey(self) -> bytes:
         if self._pubkey:
             return b"\x04" + self._pubkey.x.to_bytes(32, "big")  + self._pubkey.y.to_bytes(32, "big") 
-        s = _convert(self._privkey)
+        s = _be(self._privkey)
         g = ECPoint(self.G_x, self.G_y)
         # FIXME: this will take forever to finish....
         self._pubkey = self._mult(s, g)
